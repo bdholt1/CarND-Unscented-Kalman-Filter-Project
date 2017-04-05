@@ -23,6 +23,18 @@ public:
   ///* if this is false, radar measurements will be ignored (except for init)
   bool use_radar_;
 
+  ///* State dimension
+  int n_x_;
+
+  ///* Augmented state dimension
+  int n_aug_;
+
+  ///* Number of sigma points
+  int n_sigma_;
+
+  ///* Sigma point spreading parameter
+  double lambda_;
+
   ///* state vector: [pos1 pos2 vel_abs yaw_angle yaw_rate] in SI units and rad
   VectorXd x_;
 
@@ -32,8 +44,8 @@ public:
   ///* predicted sigma points matrix
   MatrixXd Xsig_pred_;
 
-  ///* time when the state is true, in us
-  long long time_us_;
+  ///* previous timestamp at which a measurement was received
+  long long previous_timestamp_;
 
   ///* Process noise standard deviation longitudinal acceleration in m/s^2
   double std_a_;
@@ -58,15 +70,6 @@ public:
 
   ///* Weights of sigma points
   VectorXd weights_;
-
-  ///* State dimension
-  int n_x_;
-
-  ///* Augmented state dimension
-  int n_aug_;
-
-  ///* Sigma point spreading parameter
-  double lambda_;
 
   ///* the current NIS for radar
   double NIS_radar_;
