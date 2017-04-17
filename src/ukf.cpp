@@ -111,6 +111,10 @@ void UKF::ProcessMeasurement(MeasurementPackage measurement_package) {
 
       float px = measurement_package.raw_measurements_[0];
       float py = measurement_package.raw_measurements_[1];
+      
+      // If px or py are close to zero then set them to some small positive value
+      px = (fabs(px) < 1e-6) ? px : 1e-6;
+      py = (fabs(py) < 1e-6) ? py : 1e-6;
       x_ << px, py, 0, 0, 0;
 
       // Start with a uniform uncertainty over the covariance
@@ -134,6 +138,8 @@ void UKF::ProcessMeasurement(MeasurementPackage measurement_package) {
 
   // Helpful suggestion from
   // https://discussions.udacity.com/t/numerical-instability-of-the-implementation/230449/14
+  // If the time difference between measurements is large then it's better to
+  // make smaller incremental predictions to avoid numerical instability.
   while (delta_t > 0.1)
   {
     const double dt = 0.05;
@@ -251,23 +257,19 @@ void UKF::Predict(double delta_t) {
 
   //predicted state mean
   x_.fill(0.0);
+  /*
   for (int i = 0; i < n_sigma_; ++i)
   {
     x_ = x_ + weights_(i) * Xsig_pred_.col(i);
   }
+  */
+  x_ = Xsig_pred_ * weights_;
 
   //predicted state covariance matrix
   P_.fill(0.0);
-  for (int i = 0; i < n_sigma_; ++i)
-  {
-    // state difference
-    VectorXd x_diff = Xsig_pred_.col(i) - x_;
-
-    //angle normalization
-    x_diff(3) = Tools::ConstrainAngle(x_diff(3));
-
-    P_ = P_ + weights_(i) * x_diff * x_diff.transpose() ;
-  }
+  MatrixXd x_diffs = Xsig_pred_.colwise() - x_;
+  x_diffs.row(3) = x_diffs.row(3).array().unaryExpr(&Tools::ConstrainAngle);
+  P_ = (x_diffs * weights_.asDiagonal()) * x_diffs.transpose(); 
 
   cout << "predicted x_ = " << endl;
   cout << x_ << endl;
@@ -304,23 +306,13 @@ void UKF::UpdateLidar(MeasurementPackage measurement_package) {
   }
 
   //mean predicted measurement
-  VectorXd z_pred = VectorXd(n_z);
-  z_pred.fill(0.0);
-  for (int i = 0; i < n_sigma_; ++i)
-  {
-      z_pred += weights_(i) * Zsig.col(i);
-  }
+  VectorXd z_pred = VectorXd::Zero(n_z);
+  z_pred = Zsig * weights_; 
 
   //measurement covariance matrix S
-  MatrixXd S = MatrixXd(n_z,n_z);
-  S.fill(0.0);
-  for (int i = 0; i < n_sigma_; i++)
-  {
-    //residual
-    VectorXd z_diff = Zsig.col(i) - z_pred;
-
-    S += weights_(i) * z_diff * z_diff.transpose();
-  }
+  MatrixXd S = MatrixXd::Zero(n_z, n_z);
+  MatrixXd z_diffs = Zsig.colwise() - z_pred;
+  S = (z_diffs * weights_.asDiagonal()) * z_diffs.transpose();  
 
   //add measurement noise covariance matrix
   MatrixXd R = MatrixXd(n_z,n_z);
@@ -335,21 +327,10 @@ void UKF::UpdateLidar(MeasurementPackage measurement_package) {
   z << px, py;
 
   //create matrix for cross correlation Tc
-  MatrixXd Tc = MatrixXd(n_x_, n_z);
-
-  //calculate cross correlation matrix
-  Tc.fill(0.0);
-  for (int i = 0; i < n_sigma_; i++)
-  {
-    //residual
-    VectorXd z_diff = Zsig.col(i) - z_pred;
-
-    // state difference
-    VectorXd x_diff = Xsig_pred_.col(i) - x_;
-
-    Tc += weights_(i) * x_diff * z_diff.transpose();
-  }
-
+  MatrixXd Tc = MatrixXd::Zero(n_x_, n_z);
+  MatrixXd x_diffs = Xsig_pred_.colwise() - x_;
+  Tc = (x_diffs * weights_.asDiagonal()) * z_diffs.transpose();
+  
   //Kalman gain K;
   MatrixXd K = Tc * S.inverse();
 
@@ -406,27 +387,15 @@ void UKF::UpdateRadar(MeasurementPackage measurement_package) {
   }
 
   //mean predicted measurement
-  VectorXd z_pred = VectorXd(n_z);
-  z_pred.fill(0.0);
-  for (int i = 0; i < n_sigma_; ++i)
-  {
-      z_pred += weights_(i) * Zsig.col(i);
-  }
+  VectorXd z_pred = VectorXd::Zero(n_z);
+  z_pred = Zsig * weights_; 
 
   //measurement covariance matrix S
-  MatrixXd S = MatrixXd(n_z,n_z);
-  S.fill(0.0);
-  for (int i = 0; i < n_sigma_; i++)
-  {
-    //residual
-    VectorXd z_diff = Zsig.col(i) - z_pred;
-
-    //angle normalization
-    z_diff(1) = Tools::ConstrainAngle(z_diff(1));
-
-    S += weights_(i) * z_diff * z_diff.transpose();
-  }
-
+  MatrixXd S = MatrixXd::Zero(n_z, n_z);
+  MatrixXd z_diffs = Zsig.colwise() - z_pred;
+  z_diffs.row(1) = z_diffs.row(1).array().unaryExpr(&Tools::ConstrainAngle);
+  S = (z_diffs * weights_.asDiagonal()) * z_diffs.transpose();
+  
   //add measurement noise covariance matrix
   MatrixXd R = MatrixXd(n_z,n_z);
   R <<    std_radr_*std_radr_, 0, 0,
@@ -441,26 +410,11 @@ void UKF::UpdateRadar(MeasurementPackage measurement_package) {
   float rate = measurement_package.raw_measurements_[2];
   z << rho, phi, rate;
 
-  //create matrix for cross correlation Tc
-  MatrixXd Tc = MatrixXd(n_x_, n_z);
-
-  //calculate cross correlation matrix
-  Tc.fill(0.0);
-  for (int i = 0; i < n_sigma_; i++)
-  {
-
-    //residual
-    VectorXd z_diff = Zsig.col(i) - z_pred;
-    //angle normalization
-    z_diff(1) = Tools::ConstrainAngle(z_diff(1));
-
-    // state difference
-    VectorXd x_diff = Xsig_pred_.col(i) - x_;
-    //angle normalization
-    x_diff(3) = Tools::ConstrainAngle(x_diff(3));
-
-    Tc += weights_(i) * x_diff * z_diff.transpose();
-  }
+  //create matrix for cross correlation Tc (ideas for vectorising from slack channel)
+  MatrixXd Tc = MatrixXd::Zero(n_x_, n_z);
+  MatrixXd x_diffs = Xsig_pred_.colwise() - x_;
+  x_diffs.row(3) = x_diffs.row(3).array().unaryExpr(&Tools::ConstrainAngle);
+  Tc = (x_diffs * weights_.asDiagonal()) * z_diffs.transpose();
 
   //Kalman gain K;
   MatrixXd K = Tc * S.inverse();
