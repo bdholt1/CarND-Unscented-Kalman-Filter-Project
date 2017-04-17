@@ -257,12 +257,6 @@ void UKF::Predict(double delta_t) {
 
   //predicted state mean
   x_.fill(0.0);
-  /*
-  for (int i = 0; i < n_sigma_; ++i)
-  {
-    x_ = x_ + weights_(i) * Xsig_pred_.col(i);
-  }
-  */
   x_ = Xsig_pred_ * weights_;
 
   //predicted state covariance matrix
@@ -332,7 +326,8 @@ void UKF::UpdateLidar(MeasurementPackage measurement_package) {
   Tc = (x_diffs * weights_.asDiagonal()) * z_diffs.transpose();
   
   //Kalman gain K;
-  MatrixXd K = Tc * S.inverse();
+  MatrixXd S_inv = S.inverse();
+  MatrixXd K = Tc * S_inv;
 
   //residual
   VectorXd z_diff = z - z_pred;
@@ -340,6 +335,8 @@ void UKF::UpdateLidar(MeasurementPackage measurement_package) {
   //update state mean and covariance matrix
   x_ = x_ + K * z_diff;
   P_ = P_ - K * S * K.transpose();
+  
+  NIS_laser_ = z_diff.transpose() * S_inv * z_diff;
   
   cout << "updated (laser) x_ = " << endl;
   cout << x_ << endl;
@@ -417,7 +414,8 @@ void UKF::UpdateRadar(MeasurementPackage measurement_package) {
   Tc = (x_diffs * weights_.asDiagonal()) * z_diffs.transpose();
 
   //Kalman gain K;
-  MatrixXd K = Tc * S.inverse();
+  MatrixXd S_inv = S.inverse();
+  MatrixXd K = Tc * S_inv;
 
   //residual
   VectorXd z_diff = z - z_pred;
@@ -428,6 +426,8 @@ void UKF::UpdateRadar(MeasurementPackage measurement_package) {
   //update state mean and covariance matrix
   x_ = x_ + K * z_diff;
   P_ = P_ - K * S * K.transpose();
+  
+  NIS_radar_ = z_diff.transpose() * S_inv * z_diff;
   
   cout << "updated (radar) x_ = " << endl;
   cout << x_ << endl;
